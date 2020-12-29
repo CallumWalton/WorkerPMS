@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "WorkerPMS": {
+      "commandName": "Project",
+      "commandLineArgs": "1x1 1 devTemp test"
+    }
+  }
+}
