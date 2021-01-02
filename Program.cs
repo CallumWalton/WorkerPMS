@@ -96,7 +96,7 @@ namespace WorkerPMS
                     return;
                 case "1x5":
                     // Insert Data req
-                    bool dataInsert = DatabaseManager.InsertData(args[1],args[2]);
+                    bool dataInsert = DatabaseManager.InsertData(args[1],args[2],args[3]);
                     if (dataInsert)
                         Console.Out.WriteLine("Success");
                     else
@@ -181,7 +181,7 @@ namespace WorkerPMS
                         con.Open();
 
                         var patientTableUnsync = con.CreateCommand();
-                        patientTableUnsync.CommandText = @"CREATE TABLE 'unsyncPatients' ('PatientID' INTEGER NOT NULL UNIQUE,'FName' TEXT NOT NULL,'LName' TEXT NOT NULL,'DateOfBirth' TEXT NOT NULL,'HouseNo.' TEXT NOT NULL,'AddressLine1' TEXT NOT NULL,'Postcode' TEXT NOT NULL,'PhoneNumber' TEXT NOT NULL,'EmailAddress' TEXT NOT NULL, PRIMARY KEY('PatientID'));";
+                        patientTableUnsync.CommandText = @"CREATE TABLE 'unsyncPatients' ('ExID' INTEGER NOT NULL AUTO_INCREMENT UNIQUE, 'PatientID' INTEGER NOT NULL,'FName' TEXT NOT NULL,'LName' TEXT NOT NULL,'DateOfBirth' TEXT NOT NULL,'HouseNo.' TEXT NOT NULL,'AddressLine1' TEXT NOT NULL,'Postcode' TEXT NOT NULL,'PhoneNumber' TEXT NOT NULL,'EmailAddress' TEXT NOT NULL, 'MODE' TEXT NOT NULL, PRIMARY KEY('ExID'));";
                         patientTableUnsync.ExecuteNonQuery();
 
                         var patientTableSync = con.CreateCommand();
@@ -193,12 +193,17 @@ namespace WorkerPMS
                         usrTable.ExecuteNonQuery();
 
                         var unsyncusrTable = con.CreateCommand();
-                        unsyncusrTable.CommandText = @"CREATE TABLE 'unsyncUser' ('username'  TEXT NOT NULL, 'password'  TEXT NOT NULL, 'id'    INTEGER UNIQUE,'userGroup'  TEXT NOT NULL,'session'  TEXT NOT NULL, PRIMARY KEY('id'));";
+                        unsyncusrTable.CommandText = @"CREATE TABLE 'unsyncUser' ('ExID' INTEGER NOT NULL AUTO_INCREMENT UNIQUE, 'username'  TEXT NOT NULL, 'password'  TEXT NOT NULL, 'id'    INTEGER ,'userGroup'  TEXT NOT NULL,'session'  TEXT NOT NULL, 'MODE' TEXT NOT NULL, PRIMARY KEY('ExID'));";
                         unsyncusrTable.ExecuteNonQuery();
                         
                         var permissions = con.CreateCommand();
                         permissions.CommandText = @"CREATE TABLE 'Permissions' ('GroupID' TEXT, 'Auth_Login' TEXT,'Staff_Patient_Manage' TEXT, 'Staff_Patient_Search' TEXT, 'Staff_Patient_Update' TEXT, 'Staff_Patient_Delete' TEXT, 'Staff_Patient_Add' TEXT, 'Staff_Appointment_Add' TEXT, 'Staff_Appointment_Delete' TEXT, 'Staff_Appointment_Update' TEXT, 'Staff_Appointment_Search' TEXT, PRIMARY KEY('GroupID'));";
                         permissions.ExecuteNonQuery();
+
+                        var unsyncAppointments = con.CreateCommand();
+                        unsyncAppointments.CommandText = @"CREATE TABLE 'unsyncAppointments' ('ExID' INTEGER NOT NULL AUTO_INCREMENT UNIQUE, 'AppointmentID' INTEGER NOT NULL ,'AppointmentState' TEXT,'AppointmentDate' TEXT,'AppointmentTimeFrom' TEXT,'AppointmentTimeTo' TEXT,'AppointmentStaffID' TEXT,'AppointmentPatientID' TEXT, 'AppointmentType' TEXT, 'AppointmentCost' TEXT, 'AppointmentNotes' TEXT, 'AppointmentComplete' TEXT, 'AppointmentPaid' TEXT, 'MODE' TEXT NOT NULL, PRIMARY KEY('ExID'));";
+                        unsyncAppointments.ExecuteNonQuery();
+
 
                         var appointments = con.CreateCommand();
                         appointments.CommandText = @"CREATE TABLE 'Appointments' ('AppointmentID' INTEGER NOT NULL UNIQUE,'AppointmentState' TEXT,'AppointmentDate' TEXT,'AppointmentTimeFrom' TEXT,'AppointmentTimeTo' TEXT,'AppointmentStaffID' TEXT,'AppointmentPatientID' TEXT, 'AppointmentType' TEXT, 'AppointmentCost' TEXT, 'AppointmentNotes' TEXT, 'AppointmentComplete' TEXT, 'AppointmentPaid' TEXT, PRIMARY KEY('AppointmentID'));";
@@ -735,13 +740,94 @@ namespace WorkerPMS
                     unsyncCom.CommandType = System.Data.CommandType.Text;
                     while (unsyncReader.Read())
                     {
-                        result.Add($"{unsyncReader.GetInt32(0)}^{unsyncReader.GetString(1)}^{unsyncReader.GetString(2)}^{unsyncReader.GetString(3)}^{unsyncReader.GetString(4)}^{unsyncReader.GetString(5)}^{unsyncReader.GetString(6)}^{unsyncReader.GetString(7)}^{unsyncReader.GetString(8)}");
+                        result.Add($"{unsyncReader.GetInt32(0)}^{unsyncReader.GetString(1)}'^{unsyncReader.GetString(2)}^{unsyncReader.GetString(3)}^{unsyncReader.GetString(4)}^{unsyncReader.GetString(5)}^{unsyncReader.GetString(6)}^{unsyncReader.GetString(7)}^{unsyncReader.GetString(8)}^{unsyncReader.GetString(9)}");
                     }
-                    return result;
+                    return SortUnsyncMultiResult(result);
                 }
             }
             #endregion
+            #region Sort Unsync Data
+            public static List<string> SortUnsyncMultiResult(List<string> result)
+            {
+                // The Big O Notation is screaming at me for this one; this is an optimization I'll have to come back to if I have time due to it's messiness
+                // The Optimization I would place would be to use Hashing, to create a third table of hashvalues of what the latest HashValue of what I'm trying to access is, e.g (PatientID: 00001 HashID:010101)
+                // It would be faster to read compared to sorting.
+                List<string> sorted = new List<string>();
+                List<string[]> storage = new List<string[]>();
+                    foreach (string item in result)
+                    {
+                        char[] split = new char[] { '^' };
+                        string[] items = item.Split(split);
+                        storage.Add(items);
+                    }
+                    for (int i = 0; i <= storage.Count;)
+                    {
+                        string[] str = storage[i];
+                        foreach(string[] itemArray in storage)
+                        {
+                            List<string[]> dupe = new List<string[]>();
+                            int count = 0;
+                            try { 
+                                if (itemArray[1] == str[1])
+                                {
+                                    if(itemArray[0] != str[0]) { 
+                                        dupe.Add(str);
+                                        count++;
+                                    }
+                                }
+                                else
+                                {
+                                int length = str.Length - 1;
+                                string store = "";
+                                for (int ite = 1; ite <= length;)
+                                {
+                                    // Reasoning behind my for method:
+                                    // I need to skip exID which is idStorage[ite]
+                                    // I also need to skip mode with is the last item of idStorage hence the idStorage.Length -1 being set as the comparison value
+                                    store = store + "^" + str[ite];
+                                    ite++;
+                                    // 
+                                }
+                                sorted.Add(store);
+                            }
+                            }
+                            finally
+                            {
+                                if (count > 0)
+                                {
+                                   
+                                    string[] idStorage = { };
+                                    foreach (string[] exID in dupe)
+                                    {
+                                        if(Convert.ToInt32(exID[0]) > Convert.ToInt32(idStorage[0]))
+                                        {
+                                            idStorage = exID;
+                                        }
+                                    }
 
+                                    string store = "";
+                                    int len = idStorage.Length - 1;
+                                    for(int ite = 1; ite <= len;)
+                                    {
+                                        // Reasoning behind my for method:
+                                        // I need to skip exID which is idStorage[ite]
+                                        // I also need to skip mode with is the last item of idStorage hence the idStorage.Length -1 being set as the comparison value
+                                        store = store + "^" + idStorage[ite];
+                                        ite++;
+
+                                    }
+                                    sorted.Add(store);
+                                }
+                            }
+                            
+                        }
+                        
+                        i++;
+                    }
+              return sorted;
+
+            }
+            #endregion
             #region Insert Data
             /// <summary>
             /// Inserts Data into a specified field (WIP function as it only has auth added, will add Patient and User table after
@@ -750,7 +836,7 @@ namespace WorkerPMS
             /// <param name="dataString"></param>
             /// <param name="dataIdentifier"></param>
             /// <returns></returns>
-            public static bool InsertData(string dataType, string dataString, string dataIdentifier)
+            public static bool InsertData(string dataType, string dataString, string dataIdentifier,bool unique)
             {
                 using (var con = new SQLiteConnection("Data Source=pms.db"))
                 {
@@ -769,7 +855,7 @@ namespace WorkerPMS
                     return true;
                 }
             }
-            public static bool InsertData(string dataType, string dataString)
+            public static bool InsertData(string dataType, string mode, string dataString)
             {
                 /*
                  * This method is the alternative to InsertData(string, string, string); Does the same thing but without 
@@ -780,25 +866,27 @@ namespace WorkerPMS
                     if(dataType == "P")
                     {
                         dataString = dataString.Replace("-", " ");
-                        insertComm = $"INSERT INTO 'main'.'unsyncPatients'('PatientID', 'FName', 'LName', 'DateOfBirth', 'HouseNo.', 'AddressLine1', 'Postcode', 'PhoneNumber', 'EmailAddress') VALUES(@dstring); ";
+                        insertComm = $"INSERT INTO 'main'.'unsyncPatients'('Mode', 'PatientID', 'FName', 'LName', 'DateOfBirth', 'HouseNo.', 'AddressLine1', 'Postcode', 'PhoneNumber', 'EmailAddress') VALUES(@mode, @dstring); ";
                     }
                     else if(dataType == "U")
                     {
 
                     }
-                        var unsyncCom = con.CreateCommand();
-                        con.Open();
+                    var unsyncCom = con.CreateCommand();
+                    con.Open();
 
-                        unsyncCom.CommandText = insertComm;
-                        unsyncCom.Parameters.AddWithValue("@dstring", dataString);
-                        unsyncCom.CommandType = System.Data.CommandType.Text;
-                        unsyncCom.ExecuteNonQuery();
-                        con.Close();
-                        return true;
+                    unsyncCom.CommandText = insertComm;
+                    unsyncCom.Parameters.AddWithValue("@mode", mode);
+                    unsyncCom.Parameters.AddWithValue("@dstring", dataString);
+                    unsyncCom.CommandType = System.Data.CommandType.Text;
+                    unsyncCom.ExecuteNonQuery();
+                    con.Close();
+                    return true;
                 }
             }
             #endregion
             #region Update Data
+            //Not used until Network Sync; unsyncPatients has turned into an instruction set (need to move onto network implemetation)
             public static bool UpdateData(string dataLocation,string dataIdentifier, string dataString)
             {
                 using(var con = new SQLiteConnection("Data Source=pms.db"))
@@ -806,6 +894,7 @@ namespace WorkerPMS
                     string updateComm;
                     if(dataLocation == "P")
                     {
+                        updateComm = $"UPDATE 'main'.'unsyncPatients' SET 'FName'=@fname, 'LName'=@lname, 'DateOfBirth'=@dob, 'HouseNo.'=@house, 'AddressLine1'=@adr1, 'Postcode'=@pc, 'PhoneNumber'=@tel, 'EmailAddress'=@emailadr WHERE 'PatientID'=@patientID;";
                         return true;
                     }
                     return false;
@@ -851,7 +940,7 @@ namespace WorkerPMS
                         {
                            sessionValue = sessionValue + potentialCharValue.Substring(rndValue.Next(1, 38), 1);
                         }
-                        InsertData("auth", sessionValue, uname);
+                        InsertData("auth", sessionValue, uname, true);
                         return sessionValue;
                     case "close":
                         break;
